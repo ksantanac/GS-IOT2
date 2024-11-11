@@ -11,7 +11,7 @@ Este projeto utiliza duas placas ESP32 e sensores de entrada (um potenciômetro 
 
 ## Arquitetura
 
-![Arquitetura do Sistema](images/arquitetura.png)
+![Arquitetura do Sistema](images/arquitetura.PNG)
 
 ## Vídeo da Solução
 <!-- Link: https://youtu.be/km0kCXDhtS0?si=8Hdd72nN5IADp1p1 -->
