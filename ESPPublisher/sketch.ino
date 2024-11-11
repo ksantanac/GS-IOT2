@@ -1,37 +1,36 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
-#include "DHTesp.h"
 
-// Conexão com o Wi-Fi do Wokwi
 const char* ssid = "Wokwi-GUEST";
 const char* password = "";
-
-// Conexão com o servidor do Broker
-const char* mqtt_server = "test.mosquitto.org";
-const char* mqtt_topic_solar = "solarPower";
-const char* mqtt_topic_battery = "batteryLevel";
+const char* mqtt_server = "mqtt.eclipseprojects.io";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-const int dhtPin = 15;
-DHTesp dhtSensor;
+const int potPin = 34;    // Pino para o potenciômetro (produção solar)
+const int batteryPin = 35; // Pino para simular o nível de bateria
+
+const char* mqtt_topic_solar = "solarPower";
+const char* mqtt_topic_battery = "batteryLevel";
+
+float solarPower = 0;
+float batteryLevel = 0;
 
 void setup() {
   Serial.begin(115200);
-  dhtSensor.setup(dhtPin, DHTesp::DHT22);  
+  pinMode(potPin, INPUT);
+  pinMode(batteryPin, INPUT);
 
   setup_wifi();
-  
   client.setServer(mqtt_server, 1883);
+  client.setKeepAlive(15);
+  client.setSocketTimeout(15);
 }
 
 void setup_wifi() {
-  delay(10);
-  Serial.println();
   Serial.print("Conectando-se a ");
   Serial.println(ssid);
-
   WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) {
@@ -39,33 +38,48 @@ void setup_wifi() {
     Serial.print(".");
   }
 
-  Serial.println("");
-  Serial.println("WiFi conectado");
+  Serial.println("\nWiFi conectado");
   Serial.println("Endereço IP: ");
   Serial.println(WiFi.localIP());
 }
 
-void loop() {
-  if (!client.connected()) {
-    client.connect("ESP32ClientPublisher");
-  }
-  client.loop();
+void publishData() {
+  int potValue = analogRead(potPin);
+  solarPower = map(potValue, 0, 4095, 0, 100);
 
-  TempAndHumidity data = dhtSensor.getTempAndHumidity();
+  int batteryValue = analogRead(batteryPin);
+  batteryLevel = map(batteryValue, 0, 4095, 0, 100);
 
-  // Simulando os valores de produção solar e nível de bateria
-  float solarPower = data.temperature * 5;  // Potência solar simulada
-  float batteryLevel = data.humidity;       // Nível de bateria simulada
+  String solarPowerStr = String(solarPower);
+  String batteryLevelStr = String(batteryLevel);
 
-  String solarPowerStr = String(solarPower, 2);
-  String batteryLevelStr = String(batteryLevel, 2);
-
-  Serial.println("Publicando Produção Solar: " + solarPowerStr + " W");
-  Serial.println("Publicando Nível de Bateria: " + batteryLevelStr + " %");
-
-  // Publica os valores simulados nos tópicos MQTT
   client.publish(mqtt_topic_solar, solarPowerStr.c_str());
   client.publish(mqtt_topic_battery, batteryLevelStr.c_str());
 
-  delay(2000); // Ajuste o delay conforme necessário
+  Serial.println("Dados publicados:");
+  Serial.println("Produção Solar: " + solarPowerStr + " W");
+  Serial.println("Nível de Bateria: " + batteryLevelStr + " %");
+}
+
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("Tentando conexão MQTT...");
+    if (client.connect("ESP32ClientPublisher")) {
+      Serial.println("conectado");
+    } else {
+      Serial.print("falha, rc=");
+      Serial.print(client.state());
+      Serial.println(" tente novamente em 5 segundos");
+      delay(5000);
+    }
+  }
+}
+
+void loop() {
+  if (!client.connected()) {
+    reconnect();
+  }
+  publishData();
+  client.loop();
+  delay(2000);
 }

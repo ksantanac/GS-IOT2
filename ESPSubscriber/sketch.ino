@@ -3,34 +3,32 @@
 
 const char* ssid = "Wokwi-GUEST";
 const char* password = "";
-
-const char* mqtt_server = "test.mosquitto.org";
-const char* mqtt_topic_solar = "solarPower";
-const char* mqtt_topic_battery = "batteryLevel";
+const char* mqtt_server = "mqtt.eclipseprojects.io";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-const int ledPin = 2;  
+const char* mqtt_topic_solar = "solarPower";
+const char* mqtt_topic_battery = "batteryLevel";
+
+const int ledPin = 2; // Pino D2 para o LED
+
 float solarPower = 0;
 float batteryLevel = 0;
 
 void setup() {
   Serial.begin(115200);
   pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, LOW); // LED inicialmente apagado
 
   setup_wifi();
-  
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
-  reconnect();
 }
 
 void setup_wifi() {
-  delay(10);
   Serial.print("Conectando-se a ");
   Serial.println(ssid);
-
   WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) {
@@ -43,34 +41,45 @@ void setup_wifi() {
   Serial.println(WiFi.localIP());
 }
 
-void reconnect() {
-  while (!client.connected()) {
-    Serial.print("Tentando conexão MQTT...");
-    if (client.connect("ESP32ClientReceiver")) {
-      Serial.println("conectado");
-      client.subscribe(mqtt_topic_solar);
-      client.subscribe(mqtt_topic_battery);
-    } else {
-      Serial.print("falha, rc=");
-      Serial.print(client.state());
-      Serial.println(" tente novamente em 5 segundos");
-      delay(5000);
-    }
+void callback(char* topic, byte* message, unsigned int length) {
+  String msg;
+  for (int i = 0; i < length; i++) {
+    msg += (char)message[i];
+  }
+  
+  // Atualizar valores com base no tópico recebido
+  if (String(topic) == mqtt_topic_solar) {
+    solarPower = msg.toFloat();
+    Serial.print("Produção Solar: ");
+    Serial.println(solarPower);
+  } else if (String(topic) == mqtt_topic_battery) {
+    batteryLevel = msg.toFloat();
+    Serial.print("Nível de Bateria: ");
+    Serial.println(batteryLevel);
+  }
+
+  // Controle do LED
+  if (solarPower > 50 && batteryLevel > 20) {
+    digitalWrite(ledPin, HIGH);
+  } else {
+    digitalWrite(ledPin, LOW);
   }
 }
 
-void callback(char* topic, byte* payload, unsigned int length) {
-  String message;
-  for (int i = 0; i < length; i++) {
-    message += (char)payload[i];
-  }
-
-  if (String(topic) == mqtt_topic_solar) {
-    solarPower = message.toFloat();
-    Serial.println("Produção Solar recebida: " + String(solarPower) + " W");
-  } else if (String(topic) == mqtt_topic_battery) {
-    batteryLevel = message.toFloat();
-    Serial.println("Nível de Bateria recebido: " + String(batteryLevel) + " %");
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("Tentando conexão MQTT...");
+    if (client.connect("ESP32ClientSubscriber")) {
+      Serial.println("Conectado");
+      client.subscribe(mqtt_topic_solar);
+      client.subscribe(mqtt_topic_battery);
+      Serial.println("Inscrito nos tópicos: solarPower e batteryLevel");
+    } else {
+      Serial.print("Falha, rc=");
+      Serial.print(client.state());
+      Serial.println(" tentando novamente em 5 segundos");
+      delay(5000);
+    }
   }
 }
 
@@ -79,13 +88,4 @@ void loop() {
     reconnect();
   }
   client.loop();
-
-  // Controle do LED com base nos valores de solarPower e batteryLevel
-  if (solarPower > 50 && batteryLevel > 20) {
-    digitalWrite(ledPin, HIGH); // Liga o LED para indicar boa produção e carga
-  } else {
-    digitalWrite(ledPin, LOW); // Desliga o LED se os níveis estão baixos
-  }
-
-  delay(1000);
 }
